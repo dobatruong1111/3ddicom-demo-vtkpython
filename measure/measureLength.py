@@ -14,6 +14,97 @@ def to_rgb_points(colormap: List[dict]) -> List[list]:
                 rgb_points.append([r] + color[0])
     return rgb_points
 
+"""
+    description:
+        1: convert the focal point to homogenous coordinate system.
+        2: convert the focal point to display coordinate system then select the z element.
+        3: convert the input point (in display coordinate system) with the z element selected above to world coordinate system
+    params:
+        focalPoint: a point (in world coordinate system)
+        renderer: vtkRenderer object
+        point: a point (in display coordinate system) with the z element is None
+    return: a point (in world coordinate system)
+"""
+def convertFromDisplayCoords2WorldCoords(focalPoint: List[float], renderer: vtk.vtkRenderer, point: List[int]) -> List[float]:
+    # get z when convert the focal point from homogeneous coords (4D) to display coords (3D)
+    renderer.SetWorldPoint(focalPoint[0], focalPoint[1], focalPoint[2], 1) 
+    renderer.WorldToDisplay() # 4D -> 3D
+    displayCoord = renderer.GetDisplayPoint()
+    selectionz = displayCoord[2] # (the distance from the camera position to the screen)
+
+    # get 3D coords when convert from display coords (3D) to world coords (4D)
+    renderer.SetDisplayPoint(point[0], point[1], selectionz)
+    renderer.DisplayToWorld() # 3D -> 4D
+    worldPoint = renderer.GetWorldPoint()
+    pickPosition = [0, 0, 0]
+    for i in range(3):
+        pickPosition[i] = worldPoint[i] / worldPoint[3] if worldPoint[3] else worldPoint[i]
+    return pickPosition
+
+def convertFromWorldCoords2DisplayCoords(renderer: vtk.vtkRenderer, point: List[float]) -> List[float]:
+    renderer.SetWorldPoint(point[0], point[1], point[2], 1)
+    renderer.WorldToDisplay()
+    return list(renderer.GetDisplayPoint())
+
+def getEuclideDistanceBetween2Points(firstPoint: List[float], secondPoint: List[float]) -> float:
+    return np.linalg.norm(np.array(secondPoint) - np.array(firstPoint))
+
+"""
+    description: 
+        building a plane by the first point and the direction vector of projection.
+        after finding the projection point of the second point.
+    params:
+        firstPoint: a point (in world coordinate system)
+        directionOfProjection: a vector (in world coordinate system)
+        sencondPoint: a point (in world coordinate system)
+    return: a projection point
+"""
+def findProjectionPoint(firstPoint: List[float], directionOfProjection: List[float], secondPoint: List[float]) -> List[float]:
+    x1 = firstPoint[0]; y1 = firstPoint[1]; z1 = firstPoint[2]
+    a = directionOfProjection[0]; b = directionOfProjection[1]; c = directionOfProjection[2]
+    x2 = secondPoint[0]; y2 = secondPoint[1]; z2 = secondPoint[2]
+    '''
+        first point: [x1, y1, z1] (in world coordinate system)
+        direction of projection: [a, b, c] (the normal vector of the plane, the direction vector of the straight line)
+        second point: [x2, y2, z2] (in world coordinate system)
+        the plane equation: 
+            a(x - x1) + b(y - y1) + c(z - z1) = 0
+        linear equations:
+            x = x2 + at
+            y = y2 + bt
+            z = z2 + ct
+    '''
+    x = lambda t: x2 + a * t
+    y = lambda t: y2 + b * t
+    z = lambda t: z2 + c * t
+    t = (a * x1 - a * x2 + b * y1 - b * y2 + c * z1 - c * z2) / (a*a + b*b + c*c)
+    return [x(t), y(t), z(t)]
+
+"""
+    description:
+        method returns a point (on surface or out in world coordinate system) through vtkCellPicker object.
+        method can return a projection point (in case out).
+    params:
+        cellPicker: vtkCellPicker object
+        eventPosition: a point (in display coordinate system)
+        renderer: vtkRenderer object
+        camera: vtkCamera object
+        checkToGetProjectionPoint: default=False, type=bool
+        firstPoint: a point (in world coordinate system) if return a projection point, default=None, type=List
+    return: a point (in world coordinate system)
+"""
+def getPickPosition(cellPicker: vtk.vtkCellPicker, eventPosition: List[int], renderer: vtk.vtkRenderer, camera: vtk.vtkCamera, checkToGetProjectionPoint=False, firstPoint=None) -> List[float]:
+    pickPosition = None
+    check = cellPicker.Pick(eventPosition[0], eventPosition[1], 0, renderer)
+    if check:
+        pickPosition = list(cellPicker.GetPickPosition())
+    else:
+        pickPosition = convertFromDisplayCoords2WorldCoords(camera.GetFocalPoint(), renderer, eventPosition)
+        if checkToGetProjectionPoint:
+            projectionPoint = findProjectionPoint(firstPoint, camera.GetDirectionOfProjection(), pickPosition)
+            pickPosition = projectionPoint
+    return pickPosition
+
 class MeasureLengthPipeLine():
     def __init__(self) -> None:
         self.color = vtk.vtkNamedColors()
@@ -84,115 +175,20 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.AddObserver("LeftButtonPressEvent", self.leftButtonDown)
         self.AddObserver("MouseMoveEvent", self.mouseMove)
         self.AddObserver("LeftButtonReleaseEvent", self.leftButtonUp)
-    
-    """
-        description:
-            1: convert the focal point to homogenous coordinate system.
-            2: convert the focal point to display coordinate system then select the z element.
-            3: convert the input point (in display coordinate system) with the z element selected above to world coordinate system
-        params:
-            focalPoint: a point (in world coordinate system)
-            renderer: vtkRenderer object
-            point: a point (in display coordinate system) with the z element is None
-        return: a point (in world coordinate system)
-    """
-    @staticmethod
-    def convertFromDisplayCoords2WorldCoords(focalPoint: List[float], renderer: vtk.vtkRenderer, point: List[int]) -> List[float]:
-        # get z when convert the focal point from homogeneous coords (4D) to display coords (3D)
-        renderer.SetWorldPoint(focalPoint[0], focalPoint[1], focalPoint[2], 1) 
-        renderer.WorldToDisplay() # 4D -> 3D
-        displayCoord = renderer.GetDisplayPoint()
-        selectionz = displayCoord[2] # (the distance from the camera position to the screen)
-
-        # get 3D coords when convert from display coords (3D) to world coords (4D)
-        renderer.SetDisplayPoint(point[0], point[1], selectionz)
-        renderer.DisplayToWorld() # 3D -> 4D
-        worldPoint = renderer.GetWorldPoint()
-        pickPosition = [0, 0, 0]
-        for i in range(3):
-            pickPosition[i] = worldPoint[i] / worldPoint[3] if worldPoint[3] else worldPoint[i]
-        return pickPosition
-    
-    @staticmethod
-    def convertFromWorldCoords2DisplayCoords(renderer: vtk.vtkRenderer, point: List[float]) -> List[float]:
-        renderer.SetWorldPoint(point[0], point[1], point[2], 1)
-        renderer.WorldToDisplay()
-        return renderer.GetDisplayPoint()
-    
-    @staticmethod
-    def getEuclideDistanceBetween2Points(firstPoint: List[float], secondPoint: List[float]) -> float:
-        return np.linalg.norm(np.array(secondPoint) - np.array(firstPoint))
-
-    """
-        description: 
-            building a plane by the first point and the direction vector of projection.
-            after finding the projection point of the second point.
-        params:
-            firstPoint: a point (in world coordinate system)
-            directionOfProjection: a vector (in world coordinate system)
-            sencondPoint: a point (in world coordinate system)
-        return: a projection point
-    """
-    @staticmethod
-    def findProjectionPoint(firstPoint: List[float], directionOfProjection: List[float], secondPoint: List[float]) -> List[float]:
-        x1 = firstPoint[0]; y1 = firstPoint[1]; z1 = firstPoint[2]
-        a = directionOfProjection[0]; b = directionOfProjection[1]; c = directionOfProjection[2]
-        x2 = secondPoint[0]; y2 = secondPoint[1]; z2 = secondPoint[2]
-        '''
-            first point: [x1, y1, z1] (in world coordinate system)
-            direction of projection: [a, b, c] (the normal vector of the plane, the direction vector of the straight line)
-            second point: [x2, y2, z2] (in world coordinate system)
-            the plane equation: 
-                a(x - x1) + b(y - y1) + c(z - z1) = 0
-            linear equations:
-                x = x2 + at
-                y = y2 + bt
-                z = z2 + ct
-        '''
-        x = lambda t: x2 + a * t
-        y = lambda t: y2 + b * t
-        z = lambda t: z2 + c * t
-        t = (a * x1 - a * x2 + b * y1 - b * y2 + c * z1 - c * z2) / (a*a + b*b + c*c)
-        return [x(t), y(t), z(t)]
-    
-    """
-        description:
-            method returns a point (on surface or out in world coordinate system) through vtkCellPicker object.
-            method can return a projection point (in case out).
-        params:
-            cellPicker: vtkCellPicker object
-            eventPosition: a point (in display coordinate system)
-            renderer: vtkRenderer object
-            camera: vtkCamera object
-            checkToGetProjectionPoint: default=False, type=bool
-            firstPoint: a point (in world coordinate system) if return a projection point, default=None, type=List
-        return: a point (in world coordinate system)
-    """
-    @staticmethod
-    def getPickPosition(cellPicker: vtk.vtkCellPicker, eventPosition: List[int], renderer: vtk.vtkRenderer, camera: vtk.vtkCamera, checkToGetProjectionPoint=False, firstPoint=None) -> List:
-        pickPosition = None
-        check = cellPicker.Pick(eventPosition[0], eventPosition[1], 0, renderer)
-        if check:
-            pickPosition = cellPicker.GetPickPosition()
-        else:
-            pickPosition = MeasureLengthInteractorStyle.convertFromDisplayCoords2WorldCoords(camera.GetFocalPoint(), renderer, eventPosition)
-            if checkToGetProjectionPoint:
-                projectionPoint = MeasureLengthInteractorStyle.findProjectionPoint(firstPoint, camera.GetDirectionOfProjection(), pickPosition)
-                pickPosition = projectionPoint
-        return pickPosition
 
     def mouseMove(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
         camera = renderer.GetActiveCamera()
         eventPosition = self.GetInteractor().GetEventPosition()
+        cellPicker = self.GetInteractor().GetPicker()
         if self.pipeline.isDragging:
             points = self.pipeline.polyData.GetPoints()
-            pickPosition = self.getPickPosition(self.GetInteractor().GetPicker(), eventPosition, renderer, camera, True, points.GetPoint(0))
+            pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera, True, points.GetPoint(0))
 
             self.pipeline.secondSphereActor.SetPosition(pickPosition)
             self.pipeline.secondSphereActor.VisibilityOn()
 
-            points.SetPoint(1, [pickPosition[0], pickPosition[1], pickPosition[2]])
+            points.SetPoint(1, pickPosition)
 
             idList = vtk.vtkIdList()
             idList.InsertNextId(0)
@@ -201,25 +197,25 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             self.pipeline.polyData.InsertNextCell(vtk.VTK_LINE, idList)
             points.Modified()
 
-            firstPoint = points.GetPoint(0); secondPoint = points.GetPoint(1)
-            distance = self.getEuclideDistanceBetween2Points(firstPoint, secondPoint)
+            midPoint = list(map(lambda i,j: (i+j)/2, points.GetPoint(0), points.GetPoint(1)))
+            distance = getEuclideDistanceBetween2Points(points.GetPoint(0), points.GetPoint(1))
+            displayCoords = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
+
             self.pipeline.showLength.SetInput(f"{round(distance, 1)}mm")
-            midPoint = [(firstPoint[0] + secondPoint[0])/2, (firstPoint[1] + secondPoint[1])/2, (firstPoint[2] + secondPoint[2])/2]
-            temp = self.convertFromWorldCoords2DisplayCoords(renderer, midPoint)
-            self.pipeline.showLength.SetDisplayPosition(round(temp[0]), round(temp[1]))
+            self.pipeline.showLength.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
             self.pipeline.showLength.VisibilityOn()
         else:
-            pickPosition = self.getPickPosition(self.GetInteractor().GetPicker(), eventPosition, renderer, camera)
+            pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera)
             self.pipeline.firstSphereActor.SetPosition(pickPosition)
             self.pipeline.firstSphereActor.VisibilityOn()
         self.GetInteractor().Render()
     
-    def leftButtonDown(self, obj:vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
+    def leftButtonDown(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         self.pipeline.isDragging = True
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
         camera = renderer.GetActiveCamera()
         eventPosition = self.GetInteractor().GetEventPosition()
-        pickPosition = self.getPickPosition(self.GetInteractor().GetPicker(), eventPosition, renderer, camera)
+        pickPosition = getPickPosition(self.GetInteractor().GetPicker(), eventPosition, renderer, camera)
     
         self.pipeline.firstSphereActor.SetPosition(pickPosition)
         self.pipeline.firstSphereActor.VisibilityOn()
@@ -229,7 +225,7 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.pipeline.polyData.SetPoints(points)
         self.pipeline.polyData.SetLines(line)
 
-        points.InsertNextPoint(pickPosition[0], pickPosition[1], pickPosition[2])
+        points.InsertNextPoint(pickPosition)
         points.InsertNextPoint(0, 0, 0) # defauld
 
         self.pipeline.lineActor.VisibilityOn()
@@ -238,9 +234,13 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def leftButtonUp(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         self.pipeline.isDragging = False
         self.OnLeftButtonUp()
+
         style = UpdateLengthPositionInteractorStyle(self.pipeline)
         self.GetInteractor().SetInteractorStyle(style)
 
+"""
+    description: after drawing will update the position of text when having mouse move event
+"""
 class UpdateLengthPositionInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, pipeline: MeasureLengthPipeLine) -> None:
         self.pipeline = pipeline
@@ -251,7 +251,7 @@ class UpdateLengthPositionInteractorStyle(vtk.vtkInteractorStyleTrackballCamera)
         points = self.pipeline.polyData.GetPoints()
         firstPoint = points.GetPoint(0); secondPoint = points.GetPoint(1)
         midPoint = [(firstPoint[0] + secondPoint[0])/2, (firstPoint[1] + secondPoint[1])/2, (firstPoint[2] + secondPoint[2])/2]
-        temp = MeasureLengthInteractorStyle.convertFromWorldCoords2DisplayCoords(renderer, midPoint)
+        temp = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
         self.pipeline.showLength.SetDisplayPosition(round(temp[0]), round(temp[1]))
 
         self.GetInteractor().Render()
@@ -286,7 +286,7 @@ def main():
             }
         ]
     
-    path = "C:/Users/DELL E5540/Desktop/Python/dicom-data/Ankle"
+    path = "../dicomdata/Ankle"
     path2 = "C:/Users/DELL E5540/Desktop/Python/dicom-data/220277460 Nguyen Thanh Dat/Unknown Study/CT 1.25mm Stnd KHONG TIEM"
 
     rgb_points = to_rgb_points(STANDARD)
@@ -304,9 +304,7 @@ def main():
     pipeline = MeasureLengthPipeLine()
 
     # outline
-    """
-        description: drawing a bounding box out volume object
-    """
+    # description: drawing a bounding box out volume object
     outline = vtk.vtkOutlineFilter()
     outline.SetInputConnection(reader.GetOutputPort())
     outlineMapper = vtk.vtkPolyDataMapper()
