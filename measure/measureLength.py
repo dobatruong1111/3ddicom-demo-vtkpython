@@ -109,8 +109,8 @@ class MeasureLengthPipeLine():
     def __init__(self) -> None:
         self.color = vtk.vtkNamedColors()
         self.isDragging = False
+        # line
         self.polyData = vtk.vtkPolyData()
-
         self.tubeFilter = vtk.vtkTubeFilter()
         self.tubeFilter.SetInputData(self.polyData)
         self.tubeFilter.SetNumberOfSides(20)
@@ -126,7 +126,7 @@ class MeasureLengthPipeLine():
         self.lineActor.GetProperty().SetLineWidth(2)
         self.lineActor.VisibilityOff()
 
-        # disply the length of two points in world coords
+        # display the length of two points in world coords
         self.showLength = vtk.vtkTextActor()
         self.showLength.GetTextProperty().SetColor(self.color.GetColor3d("Tomato"))
         self.showLength.GetTextProperty().SetFontSize(15)
@@ -215,7 +215,8 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
         camera = renderer.GetActiveCamera()
         eventPosition = self.GetInteractor().GetEventPosition()
-        pickPosition = getPickPosition(self.GetInteractor().GetPicker(), eventPosition, renderer, camera)
+        cellPicker = self.GetInteractor().GetPicker()
+        pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera)
     
         self.pipeline.firstSphereActor.SetPosition(pickPosition)
         self.pipeline.firstSphereActor.VisibilityOn()
@@ -249,10 +250,9 @@ class UpdateLengthPositionInteractorStyle(vtk.vtkInteractorStyleTrackballCamera)
     def mouseMove(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
         points = self.pipeline.polyData.GetPoints()
-        firstPoint = points.GetPoint(0); secondPoint = points.GetPoint(1)
-        midPoint = [(firstPoint[0] + secondPoint[0])/2, (firstPoint[1] + secondPoint[1])/2, (firstPoint[2] + secondPoint[2])/2]
-        temp = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
-        self.pipeline.showLength.SetDisplayPosition(round(temp[0]), round(temp[1]))
+        midPoint = list(map(lambda i,j: (i+j)/2, points.GetPoint(0), points.GetPoint(1)))
+        displayCoords = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
+        self.pipeline.showLength.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
 
         self.GetInteractor().Render()
         self.OnMouseMove()
