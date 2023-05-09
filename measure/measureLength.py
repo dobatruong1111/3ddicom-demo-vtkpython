@@ -2,6 +2,13 @@ import vtk
 import numpy as np
 from typing import List
 
+"""
+    description: 
+        calculate input data for transfer function
+    params:
+        colormap: a standard for color map with each CT number (HU)
+    return: a list contains other lists, sub lists have size = 4 with format: [CT number, red color, green color, blue color], colors between 0 and 1
+"""
 def to_rgb_points(colormap: List[dict]) -> List[list]:
     rgb_points = []
     for item in colormap:
@@ -193,8 +200,7 @@ class MeasureLengthPipeLine():
 class BeforeMeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, pipeline: MeasureLengthPipeLine) -> None:
         self.pipeline = pipeline
-        self.events = vtk.vtkCommand
-        self.AddObserver(self.events.LeftButtonReleaseEvent, self.__leftButtonReleaseEvent)
+        self.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent, self.__leftButtonReleaseEvent)
 
     def __leftButtonReleaseEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         # Override method of super class
@@ -211,10 +217,9 @@ class BeforeMeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
 class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, pipeline: MeasureLengthPipeLine) -> None:
         self.pipeline = pipeline
-        self.events = vtk.vtkCommand
-        self.AddObserver(self.events.LeftButtonPressEvent, self.__leftButtonPressEvent)
-        self.AddObserver(self.events.MouseMoveEvent, self.__mouseMoveEvent)
-        self.AddObserver(self.events.LeftButtonReleaseEvent, self.__leftButtonReleaseEvent)
+        self.AddObserver(vtk.vtkCommand.LeftButtonPressEvent, self.__leftButtonPressEvent)
+        self.AddObserver(vtk.vtkCommand.MouseMoveEvent, self.__mouseMoveEvent)
+        self.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent, self.__leftButtonReleaseEvent)
 
     def __mouseMoveEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         # vtkRenderer object
@@ -233,12 +238,6 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             # vtkPoints represents 3D points
             points = self.pipeline.polyData.GetPoints()
             firstPoint = points.GetPoint(0)
-
-            """
-                params:
-                    value = True: check to get a projection point, default = False
-                    firstPoint: finding a plane thought the first point. After finding projection point of the second point on plane, default = None
-            """
             pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera, True, firstPoint)
 
             # Marking the second point when drawing
@@ -263,7 +262,7 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             # Calculate the middle point
             midPoint = list(map(lambda i,j: (i+j)/2, firstPoint, secondPoint))
             # Calculate the euclidean distance between the first point and the second point
-            distance = getEuclideanDistanceBetween2Points(points.GetPoint(0), points.GetPoint(1))
+            distance = getEuclideanDistanceBetween2Points(firstPoint, secondPoint)
             # Convert the middle point from the world coordinate system to the display coordinate system 
             displayCoords = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
 
@@ -271,7 +270,7 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             self.pipeline.showLength.SetInput(f"{round(distance, 1)}mm")
             self.pipeline.showLength.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
             self.pipeline.showLength.VisibilityOn()
-        else:
+        else: # TODO: code need to processed in javascript
             pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera)
             # Marking the position of mouse in the world coordinate system when moving mouse 
             self.pipeline.firstSphereActor.SetPosition(pickPosition)
@@ -327,8 +326,7 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
 class UpdateLengthPositionInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, pipeline: MeasureLengthPipeLine) -> None:
         self.pipeline = pipeline
-        self.events = vtk.vtkCommand
-        self.AddObserver(self.events.MouseMoveEvent, self.__mouseMoveEvent)
+        self.AddObserver(vtk.vtkCommand.MouseMoveEvent, self.__mouseMoveEvent)
     
     def __mouseMoveEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
@@ -402,16 +400,18 @@ def main():
     reader.SetDirectoryName(path)
     reader.Update()
     
-    map.SetBlendModeToComposite()
+    # This option will use hardware accelerated rendering exclusively
+    # This is a good option if you know there is hardware acceleration
     map.SetRequestedRenderModeToGPU()
     map.SetInputData(reader.GetOutput())
 
     volProperty.SetInterpolationTypeToLinear()
     volProperty.ShadeOn()
-    volProperty.SetInterpolationTypeToLinear()
+    # Lighting of volume
     volProperty.SetAmbient(0.1)
     volProperty.SetDiffuse(0.9)
     volProperty.SetSpecular(0.2)
+    # Color map thought a transfer function
     for rgb_point in rgb_points:
         color.AddRGBPoint(rgb_point[0], rgb_point[1], rgb_point[2], rgb_point[3])
     volProperty.SetColor(color)
@@ -420,6 +420,7 @@ def main():
     scalarOpacity.AddPoint(80, 0)
     scalarOpacity.AddPoint(400, 0.2)
     scalarOpacity.AddPoint(1000, 1)
+    # muscle preset
     # scalarOpacity.AddPoint(-63.16470588235279, 0)
     # scalarOpacity.AddPoint(559.1764705882356, 1)
     volProperty.SetScalarOpacity(scalarOpacity)
@@ -430,6 +431,7 @@ def main():
     render.SetBackground(colors.GetColor3d("White"))
     render.AddVolume(vol)
     render.AddActor(outlineActor)
+    # Add actors of pipeline
     render.AddActor(pipeline.lineActor)
     render.AddActor(pipeline.showLength)
     render.AddActor(pipeline.firstSphereActor)
