@@ -139,10 +139,10 @@ class MeasureLengthPipeLine():
 
         # Line
         # vtkPolyData represents a geometric structure consisting of vertices, lines, polygons, and/or triangle strips
-        self.polyData = vtk.vtkPolyData()
+        self.line = vtk.vtkPolyData()
         # vtkTubeFilter is a filter that generates a tube around each input line
         self.tubeFilter = vtk.vtkTubeFilter()
-        self.tubeFilter.SetInputData(self.polyData)
+        self.tubeFilter.SetInputData(self.line)
         self.tubeFilter.SetNumberOfSides(20)
         self.tubeFilter.SetRadius(1)
         # line mapper
@@ -152,39 +152,33 @@ class MeasureLengthPipeLine():
         self.lineActor = vtk.vtkActor()
         self.lineActor.SetMapper(self.lineMapper)
         self.lineActor.GetProperty().SetColor(self.color.GetColor3d("Tomato"))
-        self.lineActor.GetProperty().SetSelectionPointSize(100)
         self.lineActor.GetProperty().SetLineWidth(2)
         self.lineActor.VisibilityOff()
 
         # Display the length of two points in the world coordinate system
         # vtkTextActor is an actor that displays text
-        self.showLength = vtk.vtkTextActor()
-        textProperty = self.showLength.GetTextProperty()
+        self.textActor = vtk.vtkTextActor()
+        textProperty = self.textActor.GetTextProperty()
         textProperty.SetColor(self.color.GetColor3d("Tomato"))
         textProperty.SetFontSize(15)
-        textProperty.SetOpacity(1)
-        textProperty.SetBackgroundOpacity(0)
         textProperty.ShadowOn()
         textProperty.BoldOn()
-        self.showLength.VisibilityOff()
+        self.textActor.VisibilityOff()
 
         # Marking the first point and the second point by two spheres
-        self.firstSphere = vtk.vtkSphereSource()
-        self.firstSphere.SetRadius(5)
+        self.sphere = vtk.vtkSphereSource()
+        self.sphere.SetRadius(5)
         
         self.firstSphereMapper = vtk.vtkPolyDataMapper()
-        self.firstSphereMapper.SetInputConnection(self.firstSphere.GetOutputPort())
+        self.firstSphereMapper.SetInputConnection(self.sphere.GetOutputPort())
         
         self.firstSphereActor = vtk.vtkActor()
         self.firstSphereActor.GetProperty().SetColor(1, 0, 0)
         self.firstSphereActor.SetMapper(self.firstSphereMapper)
         self.firstSphereActor.VisibilityOff()
         # ---
-        self.secondSphere = vtk.vtkSphereSource()
-        self.secondSphere.SetRadius(5)
-        
         self.secondSphereMapper = vtk.vtkPolyDataMapper()
-        self.secondSphereMapper.SetInputConnection(self.secondSphere.GetOutputPort())
+        self.secondSphereMapper.SetInputConnection(self.sphere.GetOutputPort())
         
         self.secondSphereActor = vtk.vtkActor()
         self.secondSphereActor.GetProperty().SetColor(1, 0, 0)
@@ -236,7 +230,7 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
 
         if self.pipeline.isDragging:
             # vtkPoints represents 3D points
-            points = self.pipeline.polyData.GetPoints()
+            points = self.pipeline.line.GetPoints()
             firstPoint = points.GetPoint(0)
             pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera, True, firstPoint)
 
@@ -253,7 +247,7 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             idList.InsertNextId(1) # Insert id of the second point
 
             # Insert a cell of type VTK_LINE
-            self.pipeline.polyData.InsertNextCell(vtk.VTK_LINE, idList)
+            self.pipeline.line.InsertNextCell(vtk.VTK_LINE, idList)
 
             # Update the modification time for this object and its Data
             points.Modified()
@@ -267,9 +261,9 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             displayCoords = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
 
             # Display the distance and set position of text
-            self.pipeline.showLength.SetInput(f"{round(distance, 1)}mm")
-            self.pipeline.showLength.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
-            self.pipeline.showLength.VisibilityOn()
+            self.pipeline.textActor.SetInput(f"{round(distance, 1)}mm")
+            self.pipeline.textActor.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
+            self.pipeline.textActor.VisibilityOn()
         else: # TODO: code need to processed in javascript
             pickPosition = getPickPosition(cellPicker, eventPosition, renderer, camera)
             # Marking the position of mouse in the world coordinate system when moving mouse 
@@ -295,10 +289,10 @@ class MeasureLengthInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         # vtkPoints represents 3D points
         points = vtk.vtkPoints()
         # vtkCellArray object to represent cell connectivity
-        line = vtk.vtkCellArray()
+        aline = vtk.vtkCellArray()
         # Set objects into vtkPolyData object
-        self.pipeline.polyData.SetPoints(points)
-        self.pipeline.polyData.SetLines(line)
+        self.pipeline.line.SetPoints(points)
+        self.pipeline.line.SetLines(aline)
 
         # Insert the first point into vtkPoints object when having left button down
         points.InsertNextPoint(pickPosition)
@@ -330,12 +324,12 @@ class UpdateLengthPositionInteractorStyle(vtk.vtkInteractorStyleTrackballCamera)
     
     def __mouseMoveEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
-        points = self.pipeline.polyData.GetPoints()
+        points = self.pipeline.line.GetPoints()
 
         firstPoint = points.GetPoint(0); secondPoint = points.GetPoint(1)
         midPoint = list(map(lambda i,j: (i+j)/2, firstPoint, secondPoint))
         displayCoords = convertFromWorldCoords2DisplayCoords(renderer, midPoint)
-        self.pipeline.showLength.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
+        self.pipeline.textActor.SetDisplayPosition(round(displayCoords[0]), round(displayCoords[1]))
 
         self.GetInteractor().Render()
         # Override method of super class
@@ -433,7 +427,7 @@ def main():
     render.AddActor(outlineActor)
     # Add actors of pipeline
     render.AddActor(pipeline.lineActor)
-    render.AddActor(pipeline.showLength)
+    render.AddActor(pipeline.textActor)
     render.AddActor(pipeline.firstSphereActor)
     render.AddActor(pipeline.secondSphereActor)
     
