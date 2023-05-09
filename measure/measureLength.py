@@ -134,51 +134,56 @@ def getPickPosition(cellPicker: vtk.vtkCellPicker, point: List[int], renderer: v
 """
 class MeasureLengthPipeLine():
     def __init__(self) -> None:
-        self.color = vtk.vtkNamedColors()
+        colors = vtk.vtkNamedColors()
         self.isDragging = False
 
         # Line
         # vtkPolyData represents a geometric structure consisting of vertices, lines, polygons, and/or triangle strips
         self.line = vtk.vtkPolyData()
+
+        # Sphere source
+        self.sphere = vtk.vtkSphereSource()
+        self.sphere.SetRadius(5)
+
+        # Filter
         # vtkTubeFilter is a filter that generates a tube around each input line
         self.tubeFilter = vtk.vtkTubeFilter()
         self.tubeFilter.SetInputData(self.line)
         self.tubeFilter.SetNumberOfSides(20)
         self.tubeFilter.SetRadius(1)
-        # line mapper
+
+        # Mappers
         self.lineMapper = vtk.vtkPolyDataMapper()
         self.lineMapper.SetInputConnection(self.tubeFilter.GetOutputPort())
-        # line actor
+
+        self.firstSphereMapper = vtk.vtkPolyDataMapper()
+        self.firstSphereMapper.SetInputConnection(self.sphere.GetOutputPort())
+
+        self.secondSphereMapper = vtk.vtkPolyDataMapper()
+        self.secondSphereMapper.SetInputConnection(self.sphere.GetOutputPort())
+        
+        # Actors
         self.lineActor = vtk.vtkActor()
         self.lineActor.SetMapper(self.lineMapper)
-        self.lineActor.GetProperty().SetColor(self.color.GetColor3d("Tomato"))
+        self.lineActor.GetProperty().SetColor(colors.GetColor3d("Tomato"))
         self.lineActor.GetProperty().SetLineWidth(2)
         self.lineActor.VisibilityOff()
 
-        # Display the length of two points in the world coordinate system
+        # display the length of two points in the world coordinate system
         # vtkTextActor is an actor that displays text
         self.textActor = vtk.vtkTextActor()
         textProperty = self.textActor.GetTextProperty()
-        textProperty.SetColor(self.color.GetColor3d("Tomato"))
+        textProperty.SetColor(colors.GetColor3d("Tomato"))
         textProperty.SetFontSize(15)
         textProperty.ShadowOn()
         textProperty.BoldOn()
         self.textActor.VisibilityOff()
 
-        # Marking the first point and the second point by two spheres
-        self.sphere = vtk.vtkSphereSource()
-        self.sphere.SetRadius(5)
-        
-        self.firstSphereMapper = vtk.vtkPolyDataMapper()
-        self.firstSphereMapper.SetInputConnection(self.sphere.GetOutputPort())
-        
+        # marking the first point and the second point by two spheres
         self.firstSphereActor = vtk.vtkActor()
         self.firstSphereActor.GetProperty().SetColor(1, 0, 0)
         self.firstSphereActor.SetMapper(self.firstSphereMapper)
         self.firstSphereActor.VisibilityOff()
-        # ---
-        self.secondSphereMapper = vtk.vtkPolyDataMapper()
-        self.secondSphereMapper.SetInputConnection(self.sphere.GetOutputPort())
         
         self.secondSphereActor = vtk.vtkActor()
         self.secondSphereActor.GetProperty().SetColor(1, 0, 0)
