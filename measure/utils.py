@@ -14,7 +14,7 @@ import math
         renderer: vtkRenderer object used to convert coordinates
     return: a point (in the world coordinate system)
 """
-def convertFromDisplayCoords2WorldCoords(focalPoint: Tuple[float], point: Tuple[int], renderer: vtk.vtkRenderer) -> Tuple[float]:
+def convertFromDisplayCoords2WorldCoords(focalPoint: Tuple[float, float, float], point: Tuple[int, int], renderer: vtk.vtkRenderer) -> Tuple[float, float, float]:
     # Get z when convert the focal point from the homogeneous coordinate system to the display coordinate system
     renderer.SetWorldPoint(focalPoint[0], focalPoint[1], focalPoint[2], 1) 
     renderer.WorldToDisplay()
@@ -39,7 +39,7 @@ def convertFromDisplayCoords2WorldCoords(focalPoint: Tuple[float], point: Tuple[
         point: a point (in the world coordinate system)
     return: a point (in the display coordinate system)
 """
-def convertFromWorldCoords2DisplayCoords(renderer: vtk.vtkRenderer, point: Tuple[float]) -> Tuple[float]:
+def convertFromWorldCoords2DisplayCoords(renderer: vtk.vtkRenderer, point: Tuple[float, float, float]) -> Tuple[float, float, float]:
     renderer.SetWorldPoint(point[0], point[1], point[2], 1)
     renderer.WorldToDisplay()
     return renderer.GetDisplayPoint()
@@ -62,7 +62,7 @@ def getEuclideanDistanceBetween2Points(firstPoint: Tuple[float], secondPoint: Tu
         directionOfProjection: a vector (in the world coordinate system)
     return: a projection point
 """
-def findProjectionPoint(firstPoint: Tuple[float], secondPoint: Tuple[float], directionOfProjection: Tuple[float]) -> Tuple[float]:
+def findProjectionPoint(firstPoint: Tuple[float, float, float], secondPoint: Tuple[float, float, float], directionOfProjection: Tuple[float, float, float]) -> Tuple[float, float, float]:
     x1 = firstPoint[0]; y1 = firstPoint[1]; z1 = firstPoint[2]
     a = directionOfProjection[0]; b = directionOfProjection[1]; c = directionOfProjection[2]
     x2 = secondPoint[0]; y2 = secondPoint[1]; z2 = secondPoint[2]
@@ -98,7 +98,7 @@ def findProjectionPoint(firstPoint: Tuple[float], secondPoint: Tuple[float], dir
         if checkToGetProjectionPoint=True, finding a plane thought the first point. After finding a projection point of the second point on plane
     return: a point (in the world coordinate system)
 """
-def getPickPosition(cellPicker: vtk.vtkCellPicker, point: Tuple[int], renderer: vtk.vtkRenderer, camera: vtk.vtkCamera, checkToGetProjectionPoint=False, firstPoint=None) -> Tuple[float]:
+def getPickPosition(cellPicker: vtk.vtkCellPicker, point: Tuple[int, int], renderer: vtk.vtkRenderer, camera: vtk.vtkCamera, checkToGetProjectionPoint=False, firstPoint=None) -> Tuple[float, float, float]:
     pickPosition = None
     check = cellPicker.Pick(point[0], point[1], 0, renderer)
     if check:
@@ -110,9 +110,20 @@ def getPickPosition(cellPicker: vtk.vtkCellPicker, point: Tuple[int], renderer: 
             pickPosition = projectionPoint
     return pickPosition
 
-def getAngleDegrees(p1: Tuple[float], c: Tuple[float], p2: Tuple[float], option="Minimal") -> float:
+"""
+    description:
+        method returns the angle between two vectors
+        the first vector created by the first point and the second point
+        the second vector created by the third point and the second point
+    params:
+        p1: the first point 
+        c: the second point
+        p2: the third point
+    return: the angle between two vectors
+"""
+def getAngleDegrees(p1: Tuple[float, float, float], c: Tuple[float, float, float], p2: Tuple[float, float, float]) -> float:
     vtkmath = vtk.vtkMath()
-    EPSILON = 1e-5
+    EPSILON = 1e-3 # threshold
 
     if vtkmath.Distance2BetweenPoints(p1, c) <= EPSILON and vtkmath.Distance2BetweenPoints(p2, c) <= EPSILON:
         return 0.0
@@ -121,14 +132,8 @@ def getAngleDegrees(p1: Tuple[float], c: Tuple[float], p2: Tuple[float], option=
     vector2 = [p2[0] - c[0], p2[1] - c[1], p2[2] - c[2]]
     vtkmath.Normalize(vector1)
     vtkmath.Normalize(vector2)
-    angleRad = math.acos(vtkmath.Dot(vector1, vector2))
+    angleRad = math.acos(vtkmath.Dot(vector1, vector2)) # Dot: tich vo huong
     angleDeg = vtkmath.DegreesFromRadians(angleRad)
-    
-    if option == "Minimal":
-        return angleDeg
-    else:
-        if option == "OrientedSigned":
-            return -1.0 * angleDeg
-        elif option == "OrientedPositive":
-            return 360.0 - angleDeg
-    return 0.0
+
+    return angleDeg
+    # TODO: need to develop other options such as: OrientedSigned (-180 -> 180) and OrientedPositive (0 -> 360)
