@@ -67,14 +67,20 @@ class LengthMeasurementPipeline():
 """
     Description: 
         BeforeMeasureLengthInteractorStyle class extends vtkInteractorStyleTrackballCamera class.
-        vtkInteractorStyleTrackballCamera allows the user to interactively manipulate (rotate, pan, etc.) the camera.
-        Set interactor style before length measurement.
+        vtkInteractorStyleTrackballCamera allows the user to interactively manipulate (rotate, pan, etc.)
+        the camera.
+        Class used to rotate, pan,... before angle measurement.
 """
 class BeforeLengthMeasurementInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, pipeline: LengthMeasurementPipeline) -> None:
         self.pipeline = pipeline
         self.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent, self.__leftButtonReleaseEvent)
 
+    """
+        Description:
+            A handle function used to set length measurement interactor style
+            when having left button release event.
+    """
     def __leftButtonReleaseEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         # Override method of super class
         self.OnLeftButtonUp()
@@ -137,6 +143,7 @@ class LengthMeasurementInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
                 self.pipeline.line.InsertNextCell(vtk.VTK_LINE, idList)
                 # Method used to calculate the position of text actor
                 utils.buildTextActorLengthMeasurement(self.pipeline.textActor, renderer, points)
+
         else: # TODO: code need to processed in javascript
             pickPosition = utils.getPickPosition(eventPosition, cellPicker, renderer, camera)
             # Marking the position of mouse in world coordinates
@@ -196,7 +203,7 @@ class LengthMeasurementInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     """
         Description:
             A handle function when having left button release event.
-            If number of points equals 2, set interactor style after length measurement finish.
+            If number of points equals 2, set interactor style after length measurement finished.
     """
     def __leftButtonReleaseEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         # Override method of super class
@@ -210,13 +217,17 @@ class LengthMeasurementInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
 """
     Description:
         UpdateLengthPositionInteractorStyle class extends vtkInteractorStyleTrackballCamera class.
-        Set interactor style after drawing will update the position of text when having mouse move event.
+        Class used to rotate, pan,... after angle measurement.
 """
 class AfterLengthMeasurementInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, pipeline: LengthMeasurementPipeline) -> None:
         self.pipeline = pipeline
         self.AddObserver(vtk.vtkCommand.MouseMoveEvent, self.__mouseMoveEvent)
     
+    """
+        Description:
+            A handle function used to update the position of text actor when having mouse move event.
+    """
     def __mouseMoveEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         renderer = self.GetInteractor().GetRenderWindow().GetRenderers().GetFirstRenderer()
         points = self.pipeline.line.GetPoints()
