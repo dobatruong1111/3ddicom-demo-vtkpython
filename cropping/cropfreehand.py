@@ -146,7 +146,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             self.updateGlyphWithNewPosition(self.pipeline, eventPosition, True)
 
             self.paintApply()
-            
+
             self.OnLeftButtonUp()
 
             style = vtk.vtkInteractorStyleTrackballCamera()
@@ -357,7 +357,7 @@ def main() -> None:
                     "color": [[255 / 255, 217 / 255, 163 / 255]] # ~ white
                 }
             ]
-    path = "C:/Users/DELL E5540/Desktop/Python/dicom-data/220277460 Nguyen Thanh Dat/Unknown Study/CT 1.25mm Stnd KHONG TIEM"
+    path = "./dicomdata/CT1.25mmStndKHONGTIEM"
 
     rgb_points = to_rgb_points(STANDARD)
     colors = vtk.vtkNamedColors()
