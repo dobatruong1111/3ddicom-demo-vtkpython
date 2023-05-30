@@ -315,7 +315,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.map.SetInputData(stencil.GetOutput())
 
 def main() -> None:
-    path = "dicom-data/CT1.25mmStndKHONGTIEM"
+    path = "../dicomdata/CT1.25mmStndKHONGTIEM"
 
     colors = vtk.vtkNamedColors()
     reader = vtk.vtkDICOMImageReader()
