@@ -35,12 +35,10 @@ class InteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.pipeline = pipeline
         self.imageData = imageData
         self.map = map
-
         self.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent, self.leftButtonReleaseEvent)
 
     def leftButtonReleaseEvent(self, obj: vtk.vtkInteractorStyleTrackballCamera, event: str) -> None:
         self.OnLeftButtonUp()
-
         style = CropFreehandInteractorStyle(self.pipeline, self.imageData, self.map)
         self.GetInteractor().SetInteractorStyle(style)
 
@@ -54,19 +52,14 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.AddObserver(vtk.vtkCommand.MouseMoveEvent, self.__mouseMoveEvent)
         self.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent, self.__leftButtonReleaseEvent)
         
-        # La mot filter duoc su dung de tinh toan cac vector phap tuyen cho doi tuong vtkPolyData
         self.brushPolyDataNormals = vtk.vtkPolyDataNormals()
-        # Bat che do tu dong dieu chinh huong cua vector phap tuyen duoc tinh toan
         self.brushPolyDataNormals.AutoOrientNormalsOn()
 
-        # La mot filter duoc su dung de bien doi vtkPolyData theo 1 phep bien doi duoc xac dinh boi vtkTransform
         self.worldToModifierLabelmapIjkTransformer = vtk.vtkTransformPolyDataFilter()
         self.worldToModifierLabelmapIjkTransform = vtk.vtkTransform()
         self.worldToModifierLabelmapIjkTransformer.SetTransform(self.worldToModifierLabelmapIjkTransform)
         self.worldToModifierLabelmapIjkTransformer.SetInputConnection(self.brushPolyDataNormals.GetOutputPort()) # vtkPolyData
 
-        # Duoc su dung de chuyen doi vtkPolyData thanh mot vtkImageStencil
-        # Su dung thong tin tu vtkPolyData de tao ra mot vung stencil tren 1 anh
         self.brushPolyDataToStencil = vtk.vtkPolyDataToImageStencil()
         self.brushPolyDataToStencil .SetOutputOrigin(0, 0, 0)
         self.brushPolyDataToStencil.SetOutputSpacing(1, 1, 1)
@@ -181,6 +174,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         clipRangeFromCamera = camera.GetClippingRange()
         clipRange = [clipRangeFromCamera[0], clipRangeFromCamera[1]]
 
+        # Step 2: Mapping display space points to world positions
         for pointIndex in range(numberOfPoints):
             # Convert the selection point into world coordinates
             pointXY = pointsXY.GetPoint(pointIndex)
@@ -211,6 +205,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             closedSurfacePoints.InsertNextPoint(p1World)
             closedSurfacePoints.InsertNextPoint(p2World)
 
+        # Step 3: Take 2d contour as polydata line, and extrude surfaces from the near clipping plane to the far clipping plane
         # Skirt
         # Object to represent cell connectivity
         closedSurfaceStrips = vtk.vtkCellArray() 
@@ -236,6 +231,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         closedSurfacePolyData.SetStrips(closedSurfaceStrips)
         closedSurfacePolyData.SetPolys(closedSurfacePolys)
 
+        # Step 4: Take the polydata from step 3, and do a 3D stencil filter
         self.brushPolyDataNormals.SetInputData(closedSurfacePolyData)
         self.brushPolyDataNormals.Update()
 
@@ -254,6 +250,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.updateBrushModel()
         self.updateBrushStencil()
 
+        # Step 5: Convert from Image Stencil Data to Image Data
         # vtkImageStencilToImage will convert an image stencil into a binary image
         # The default output will be an 8-bit image with a value of 1 inside the stencil and 0 outside
         stencilToImage = vtk.vtkImageStencilToImage()
@@ -264,6 +261,7 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         stencilToImage.SetOutputScalarType(self.imageData.GetScalarType()) # vtk.VTK_SHORT: [-32768->32767], vtk.VTK_UNSIGNED_CHAR: [0->255]
         stencilToImage.Update()
 
+        # Step 6: Create a Image Data extends origin image data some properties, all scalar values equal 0
         baseImage = vtk.vtkImageData()
         baseImage.SetExtent(self.imageData.GetExtent())
         baseImage.SetSpacing(self.imageData.GetSpacing())
@@ -275,6 +273,8 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.modifyImage(baseImage, modifierImage)
     
     def modifyImage(self, baseImage: vtk.vtkImageData, modifierImage: vtk.vtkImageData):
+
+        # Step 7: Filter scalar values inside, all inside values equal 1, and outside equal 0
         baseExtent = baseImage.GetExtent()
         updateExtent = [v for v in baseExtent]
         modifierExtent = modifierImage.GetExtent()
@@ -299,6 +299,8 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.maskVolume(baseImage)
 
     def maskVolume(self, baseImage):
+
+        # Step 8: Apply mask volume
         maskToStencil = vtk.vtkImageToImageStencil()
         maskToStencil.ThresholdByLower(0)
         maskToStencil.SetInputData(baseImage)
@@ -309,57 +311,12 @@ class CropFreehandInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         stencil.SetStencilConnection(maskToStencil.GetOutputPort())
         stencil.Update()
 
+        # Step 9: Render the new volume
         self.map.SetInputData(stencil.GetOutput())
 
-"""
-    Description: calculate input data for transfer function.
-    Params:
-        colormap: a standard for color map with each CT number (HU)
-    Return: a list contains other lists, sub lists have size = 4 with format: [CT number, red color, green color, blue color], colors between 0 and 1
-"""
-def to_rgb_points(colormap: List[dict]) -> List[list]:
-    rgb_points = []
-    for item in colormap:
-        crange = item["range"]
-        color = item["color"]
-        for idx, r in enumerate(crange):
-            if len(color) == len(crange):
-                rgb_points.append([r] + color[idx])
-            else:
-                rgb_points.append([r] + color[0])
-    return rgb_points
-
 def main() -> None:
-    STANDARD = [
-                {
-                    "name": 'air',
-                    "range": [-1000],
-                    "color": [[0, 0, 0]] # black
-                },
-                {
-                    "name": 'lung',
-                    "range": [-600, -400],
-                    "color": [[194 / 255, 105 / 255, 82 / 255]]
-                },
-                {
-                    "name": 'fat',
-                    "range": [-100, -60],
-                    "color": [[194 / 255, 166 / 255, 115 / 255]]
-                },
-                {
-                    "name": 'soft tissue',
-                    "range": [40, 80],
-                    "color": [[102 / 255, 0, 0], [153 / 255, 0, 0]] # red
-                },
-                {
-                    "name": 'bone',
-                    "range": [400, 1000],
-                    "color": [[255 / 255, 217 / 255, 163 / 255]] # ~ white
-                }
-            ]
-    path = "./dicomdata/CT1.25mmStndKHONGTIEM"
+    path = "dicom-data/CT1.25mmStndKHONGTIEM"
 
-    rgb_points = to_rgb_points(STANDARD)
     colors = vtk.vtkNamedColors()
     reader = vtk.vtkDICOMImageReader()
     map = vtk.vtkSmartVolumeMapper()
@@ -368,7 +325,6 @@ def main() -> None:
     render = vtk.vtkRenderer()
     renWin = vtk.vtkRenderWindow()
     scalarOpacity = vtk.vtkPiecewiseFunction()
-    color = vtk.vtkColorTransferFunction()
     renIn = vtk.vtkRenderWindowInteractor()
     pipeline = ScissorsPipeline()
 
@@ -397,11 +353,7 @@ def main() -> None:
     volProperty.SetAmbient(0.1)
     volProperty.SetDiffuse(0.9)
     volProperty.SetSpecular(0.2)
-    # Color map thought a transfer function
-    for rgb_point in rgb_points:
-        color.AddRGBPoint(rgb_point[0], rgb_point[1], rgb_point[2], rgb_point[3])
-    volProperty.SetColor(color)
-
+    
     # Bone preset
     scalarOpacity.AddPoint(80, 0)
     scalarOpacity.AddPoint(400, 0.2)
@@ -422,6 +374,8 @@ def main() -> None:
     renWin.AddRenderer(render)
     
     renIn.SetRenderWindow(renWin)
+
+    # Step 1: Drawing a 2D contour on the screen
     style = InteractorStyle(pipeline, imageData, map)
     renIn.SetInteractorStyle(style)
 
